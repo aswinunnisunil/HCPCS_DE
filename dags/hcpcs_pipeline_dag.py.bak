@@ -1,0 +1,69 @@
+
+"""Airflow DAG for the HCPCS data pipeline."""
+import subprocess
+import sys
+from datetime import datetime
+from pathlib import Path
+
+from airflow.sdk import dag, task
+
+PROJECT_DIR = Path("/opt/airflow/project")
+sys.path.insert(0, str(PROJECT_DIR))
+
+from monitoring import notify_failure
+
+
+
+@dag(
+    dag_id="hcpcs_pipeline",
+    description="Extract, transform, load and validate HCPCS data",
+    schedule=None,
+    start_date=datetime(2026, 11, 11),
+    catchup=False,
+    max_active_runs=1,
+    tags=["hcpcs", "data-engineering"],
+    on_failure_callback=notify_failure,
+)
+def hcpcs_pipeline():
+
+    @task
+    def scrape_hcpcs():
+        subprocess.run(
+            [sys.executable, "scrapper.py"],
+            cwd=PROJECT_DIR,
+            check=True,
+        )
+
+    @task
+    def transform_hcpcs():
+        subprocess.run(
+            [sys.executable, "transform.py"],
+            cwd=PROJECT_DIR,
+            check=True,
+        )
+
+    @task
+    def load_to_postgres():
+        subprocess.run(
+            [sys.executable, "load.py"],
+            cwd=PROJECT_DIR,
+            check=True,
+        )
+
+    @task
+    def validate_data():
+        subprocess.run(
+            [sys.executable, "validation.py"],
+            cwd=PROJECT_DIR,
+            check=True,
+        )
+    
+    scrape = scrape_hcpcs()
+    transform = transform_hcpcs()
+    load = load_to_postgres()
+    validate = validate_data()
+
+    scrape >> transform >> load >> validate
+
+
+hcpcs_pipeline()
